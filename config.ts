@@ -10,6 +10,6 @@ export const oauth = {
   scope,
   redirect_uri,
   client_id: public_url
-    ? `${public_url}/client-metadata.json`
+    ? `${public_url}/oauth/client-metadata.json`
     : `http://localhost?redirect_uri=${enc(redirect_uri)}&scope=${enc(scope)}`
 }

@@ -28,7 +28,7 @@ router.get("/", async (ctx, next) => {
   });
 });
 
-router.get("/client-metadata.json", (ctx) => {
+router.get("/oauth/client-metadata.json", (ctx) => {
   ctx.response.type = "application/json";
   ctx.response.body = ctx.state.oauth.clientMetadata;
 });
