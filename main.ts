@@ -3,115 +3,102 @@ import { Application } from "jsr:@oak/oak/application";
 import { Session as OakSession } from "x/oak-sessions";
 
 import { Agent } from "npm:@atproto/api";
-import { OAuthClient } from "npm:@atproto/oauth-client";
-import { AtprotoHandleResolver } from "npm:@atproto-labs/handle-resolver";
 
-import { DenoKvStore } from "./lib/kv-store.ts";
-import DenoRuntimeImpl from "./lib/oauth-runtime-impl.ts";
-
-const kv = await Deno.openKv();
-const enc = encodeURIComponent;
-
-const public_url = Deno.env.get("PUBLIC_URL");
-const local_url = "http://127.0.0.1:7878";
-const base_url = public_url || local_url;
-
-const redirect_uri = `${base_url}/oauth/callback`;
-const scope = "atproto transition:generic";
-const client_name = "skypod";
-const client_id = public_url
-  ? `${public_url}/client-metadata.json`
-  : `http://localhost?redirect_uri=${enc(redirect_uri)}&scope=${enc(scope)}`;
-
-const client = new OAuthClient({
-  runtimeImplementation: DenoRuntimeImpl,
-  handleResolver: new AtprotoHandleResolver(DenoRuntimeImpl),
-  stateStore: new DenoKvStore(kv, "oauth", "state"),
-  sessionStore: new DenoKvStore(kv, "oauth", "session"),
-  responseMode: "query",
-  clientMetadata: {
-    client_name,
-    client_id,
-    scope,
-    redirect_uris: [redirect_uri],
-    grant_types: ["authorization_code", "refresh_token"],
-    response_types: ["code"],
-    application_type: "web",
-    token_endpoint_auth_method: "none",
-  },
-});
+import * as config from "./config.ts"
+import { buildClient, OAuthClient } from "./lib/oauth-client.ts"
 
 type AppState = {
-  session: OakSession;
+  kv: Deno.Kv;
+  oauth: OAuthClient;
+  session?: OakSession;
+  agent?: Agent;
 };
 
 const router = new Router<AppState>();
 
-router.get("/client-metadata.json", (ctx) => {
-  console.log("getting metadata");
+router.get("/", async (ctx, next) => {
+  if (!ctx.state.agent)
+    return await next();
+
   ctx.response.type = "application/json";
-  ctx.response.body = client.clientMetadata;
-});
-
-router.get("/logged-in", async (ctx) => {
-  const did = ctx.state.session.get("did") as string;
-  if (did == null) {
-    return ctx.response.redirect("/");
-  }
-
-  const agent = new Agent(await client.restore(did));
-  const profile = await agent.com.atproto.repo.getRecord({
-    repo: agent.assertDid,
+  ctx.response.body = await ctx.state.agent.com.atproto.repo.getRecord({
+    repo: ctx.state.agent.assertDid,
     collection: "app.bsky.actor.profile",
     rkey: "self",
   });
+});
 
+router.get("/client-metadata.json", (ctx) => {
   ctx.response.type = "application/json";
-  ctx.response.body = profile;
+  ctx.response.body = ctx.state.oauth.clientMetadata;
 });
 
 router.get("/oauth/callback", async (ctx) => {
-  try {
-    const params = ctx.request.url.searchParams;
-    console.log("got callback!", { params });
-    const { session, state } = await client.callback(params);
-    ctx.state.session.set("did", session.did);
-    ctx.state.session.set("state", state);
-    return ctx.response.redirect("/logged-in");
-  } catch (err) {
-    console.error({ err }, "oauth callback failed");
-    ctx.response.body = "oh no";
-    ctx.response.status = 500;
-    return;
-  }
+  const params = ctx.request.url.searchParams;
+  const tokens = await ctx.state.oauth.callback(params);
+  ctx.state.session?.set("did", tokens.session.did);
+
+  return ctx.response.redirect("/");
 });
 
 router.post("/oauth/login", async (ctx) => {
-  const body = await ctx.request.body.form();
+  const body   = await ctx.request.body.form();
   const handle = body.get("handle");
   if (typeof handle !== "string") {
     return ctx.response.redirect("?error=bad-handle");
   }
 
-  const url = await client.authorize(handle);
+  const url = await ctx.state.oauth.authorize(handle);
   return ctx.response.redirect(url);
 });
 
-const app = new Application();
+const kv    = await Deno.openKv();
+const oauth = buildClient(kv, {
+  responseMode: "query",
+  clientMetadata: {
+    client_name: "skypod",
+    client_id:   config.oauth.client_id,
+    scope: config.oauth.scope,
+    redirect_uris: [config.oauth.redirect_uri],
+    token_endpoint_auth_method: "none"
+  }
+})
+
+const app = new Application<AppState>({
+  contextState: "prototype",
+  state: { kv, oauth }
+});
 
 app.use(OakSession.initMiddleware());
+app.use(async (ctx, next) => {
+  const did = ctx.state.session?.get("did") as string | null;
+  if (did != null) {
+    const tokens = await ctx.state.oauth.restore(did);
+    ctx.state.agent = new Agent(tokens);
+  }
+
+  await next();
+});
 app.use(router.routes());
 app.use(router.allowedMethods());
-app.use(async (context, next) => {
+app.use(async (ctx, next) => {
   try {
-    await context.send({
-      root: `${Deno.cwd()}/public`,
-      index: "index.html",
-    });
+    await ctx.send({ root: `${Deno.cwd()}/public`, index: "index.html" });
   } catch {
     await next();
   }
 });
+app.use((ctx) => {
+  ctx.response.status = 404;
+  ctx.response.body = "not found";
+});
+app.addEventListener('error', (e) => {
+  console.error('error in handler!', e);
+  if (e.context) {
+    e.context.response.status = 500;
+    e.context.response.body   = 'oh no!';
+  }
+})
 
 console.log("listening on http://localhost:7878");
 app.listen({ port: 7878 });
