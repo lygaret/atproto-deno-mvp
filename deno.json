@@ -13,5 +13,13 @@
     "@panva/jose": "jsr:@panva/jose@^6.0.10",
     "@std/assert": "jsr:@std/assert@1",
     "x/oak-sessions": "https://deno.land/x/oak_sessions@v9.0.0/mod.ts"
+  },
+  "deploy": {
+    "project": "8e3b4401-3875-41a2-97a7-76a23796542c",
+    "exclude": [
+      "**/node_modules"
+    ],
+    "include": [],
+    "entrypoint": "main.ts"
   }
 }

@@ -60,7 +60,8 @@ const oauth = buildClient(kv, {
     client_id:   config.oauth.client_id,
     scope: config.oauth.scope,
     redirect_uris: [config.oauth.redirect_uri],
-    token_endpoint_auth_method: "none"
+    token_endpoint_auth_method: "none",
+    dpop_bound_access_tokens: true
   }
 })
 
