@@ -1,0 +1,17 @@
+{
+  "tasks": {
+    "dev": "deno run --watch main.ts",
+    "lex": "lex"
+  },
+  "imports": {
+    "@atproto-labs/handle-resolver": "npm:@atproto-labs/handle-resolver@^0.1.7",
+    "@atproto/api": "npm:@atproto/api@^0.14.9",
+    "@atproto/jwk": "npm:@atproto/jwk@^0.1.4",
+    "@atproto/lex-cli": "npm:@atproto/lex-cli@^0.7.0",
+    "@atproto/oauth-client": "npm:@atproto/oauth-client@^0.3.11",
+    "@oak/oak": "jsr:@oak/oak@^17.1.4",
+    "@panva/jose": "jsr:@panva/jose@^6.0.10",
+    "@std/assert": "jsr:@std/assert@1",
+    "x/oak-sessions": "https://deno.land/x/oak_sessions@v9.0.0/mod.ts"
+  }
+}
